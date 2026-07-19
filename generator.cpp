@@ -5,11 +5,13 @@
 #include <random>
 #include <cstring>
 #include <iomanip>
+#include <sstream>
 #include <secp256k1.h>
 #include <openssl/sha.h>
-#include <openssl/ripemd.h>
+#include <openssl/evp.h> // Required for modern OpenSSL 3.0+ EVP functions
 
 const std::string BASE58_CHARS = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const size_t RIPEMD160_DIGEST_LENGTH = 20;
 
 // High-speed inline Base58 encoder to bypass heap allocations
 std::string encodeBase58(const unsigned char* input, size_t len) {
@@ -40,11 +42,9 @@ std::string encodeBase58(const unsigned char* input, size_t len) {
     return result;
 }
 
-// Low-overhead pipeline translating curve points directly to a Base58 address
+// Modern, future-proof pipeline translating curve points to a Base58 address
 std::string pubKeyToAddress(secp256k1_context* ctx, const secp256k1_pubkey& pubkey) {
-    // Modern, future-proof pipeline translating curve points to a Base58 address
-std::string pubKeyToAddress(secp256k1_context* ctx, const secp256k1_pubkey& pubkey) {
-    unsigned char serialized_pub;
+    unsigned char serialized_pub[33];
     size_t serialized_len = 33;
     
     secp256k1_ec_pubkey_serialize(ctx, serialized_pub, &serialized_len, &pubkey, SECP256K1_EC_COMPRESSED);
@@ -63,7 +63,7 @@ std::string pubKeyToAddress(secp256k1_context* ctx, const secp256k1_pubkey& pubk
     EVP_DigestUpdate(mdctx, sha256_res, SHA256_DIGEST_LENGTH);
     EVP_DigestFinal_ex(mdctx, ripemd_res + 1, &ripemd_len);
     EVP_MD_CTX_free(mdctx);
-}
+
     // 3. Double SHA-256 Checksum
     unsigned char checksum_sha1[SHA256_DIGEST_LENGTH];
     unsigned char checksum_sha2[SHA256_DIGEST_LENGTH];
@@ -77,7 +77,6 @@ std::string pubKeyToAddress(secp256k1_context* ctx, const secp256k1_pubkey& pubk
 }
 
 void generatorWorker(int thread_id) {
-    // Isolated contexts prevent thread locking bottlenecks
     secp256k1_context* ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
     
     std::random_device rd;
@@ -135,4 +134,3 @@ int main() {
 
     return 0;
 }
-
