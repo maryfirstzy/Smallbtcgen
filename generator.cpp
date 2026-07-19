@@ -42,23 +42,35 @@ std::string encodeBase58(const unsigned char* input, size_t len) {
 
 // Low-overhead pipeline translating curve points directly to a Base58 address
 std::string pubKeyToAddress(secp256k1_context* ctx, const secp256k1_pubkey& pubkey) {
-    unsigned char serialized_pub[33];
+    // Modern, future-proof pipeline translating curve points to a Base58 address
+std::string pubKeyToAddress(secp256k1_context* ctx, const secp256k1_pubkey& pubkey) {
+    unsigned char serialized_pub;
     size_t serialized_len = 33;
     
     secp256k1_ec_pubkey_serialize(ctx, serialized_pub, &serialized_len, &pubkey, SECP256K1_EC_COMPRESSED);
 
+    // 1. SHA-256 Hash
     unsigned char sha256_res[SHA256_DIGEST_LENGTH];
     SHA256(serialized_pub, serialized_len, sha256_res);
 
+    // 2. Modern OpenSSL 3.0+ EVP RIPEMD-160 Hash
     unsigned char ripemd_res[RIPEMD160_DIGEST_LENGTH + 5];
     ripemd_res[0] = 0x00; // Bitcoin Mainnet Network Byte
-    RIPEMD160(sha256_res, SHA256_DIGEST_LENGTH, ripemd_res + 1);
 
+    unsigned int ripemd_len = 0;
+    EVP_MD_CTX* mdctx = EVP_MD_CTX_new();
+    EVP_DigestInit_ex(mdctx, EVP_ripemd160(), nullptr);
+    EVP_DigestUpdate(mdctx, sha256_res, SHA256_DIGEST_LENGTH);
+    EVP_DigestFinal_ex(mdctx, ripemd_res + 1, &ripemd_len);
+    EVP_MD_CTX_free(mdctx);
+}
+    // 3. Double SHA-256 Checksum
     unsigned char checksum_sha1[SHA256_DIGEST_LENGTH];
     unsigned char checksum_sha2[SHA256_DIGEST_LENGTH];
     SHA256(ripemd_res, RIPEMD160_DIGEST_LENGTH + 1, checksum_sha1);
     SHA256(checksum_sha1, SHA256_DIGEST_LENGTH, checksum_sha2);
 
+    // 4. Inject Checksum
     std::memcpy(ripemd_res + RIPEMD160_DIGEST_LENGTH + 1, checksum_sha2, 4);
 
     return encodeBase58(ripemd_res, RIPEMD160_DIGEST_LENGTH + 5);
